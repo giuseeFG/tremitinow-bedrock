@@ -1,0 +1,13 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "tremiti-bot-lambda"
+region = "eu-central-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "BedrockModelId=\"anthropic.claude-3-5-sonnet-20241022-v2:0\" BedrockMaxTokens=\"2000\" BedrockTemperature=\"0.3\""
+disable_rollback = false
+image_repositories = [] 
+resolve_s3 = true
+s3_prefix = "tremiti-bot-lambda"

@@ -1,0 +1,32 @@
+{
+  "name": "tremiti-bot-bedrock",
+  "version": "1.0.0",
+  "description": "Bot assistente per le Isole Tremiti usando Amazon Bedrock",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "tremiti",
+    "bot",
+    "bedrock",
+    "aws",
+    "chatbot"
+  ],
+  "author": "TremitiNow",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.839.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "moment": "^2.30.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "nodemon": "^3.1.10"
+  }
+}

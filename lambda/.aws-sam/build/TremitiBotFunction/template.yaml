@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: TremitiBot Bedrock Lambda Function
+
+Parameters:
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-3-5-sonnet-20240620-v1:0
+  BedrockMaxTokens:
+    Type: Number
+    Default: 2000
+  BedrockTemperature:
+    Type: Number
+    Default: 0.3
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: nodejs20.x
+    Environment:
+      Variables:
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
+        BEDROCK_MAX_TOKENS: !Ref BedrockMaxTokens
+        BEDROCK_TEMPERATURE: !Ref BedrockTemperature
+
+Resources:
+  TremitiBotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: tremiti-bot-lambda
+      CodeUri: .
+      Handler: index.handler
+      Description: Lambda function per TremitiBot Bedrock
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource: "*"
+      Events:
+        ChatApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TremitiBotApi
+            Path: /chat
+            Method: post
+        ChatOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TremitiBotApi
+            Path: /chat
+            Method: options
+        HealthApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TremitiBotApi
+            Path: /health
+            Method: get
+
+  TremitiBotApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'OPTIONS,POST,GET'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
+Outputs:
+  TremitiBotApiUrl:
+    Description: "API Gateway endpoint URL for TremitiBot"
+    Value: !Sub "https://${TremitiBotApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+    
+  ChatEndpoint:
+    Description: "Endpoint per chiamare il bot"
+    Value: !Sub "https://${TremitiBotApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/chat"
+    
+  HealthEndpoint:
+    Description: "Endpoint per health check"
+    Value: !Sub "https://${TremitiBotApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/health"
