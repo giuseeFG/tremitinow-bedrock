@@ -30,17 +30,37 @@ export class TremitiBot {
   }
 
   getQueryCategory(userMessage) {
-    const categories = [
-      { key: 'ristoranti', keywords: ['mangiare', 'ristorante', 'ristoranti', 'pizzeria', 'bar', 'cena', 'pranzo'] },
-      { key: 'hotel', keywords: ['dormire', 'hotel', 'albergo', 'b&b', 'alloggio'] },
-      { key: 'escursioni', keywords: ['escursione', 'tour', 'gita', 'barca'] },
-      { key: 'cale', keywords: ['cala', 'spiaggia', 'mare', 'bagno'] },
-      // ...altre categorie
-    ];
     const lowerMsg = userMessage.toLowerCase();
-    for (const cat of categories) {
-      if (cat.keywords.some(k => lowerMsg.includes(k))) return cat.key;
+    
+    // PRIORITÀ ASSOLUTA: se c'è "cala" o "cale", è sempre categoria cale
+    if (lowerMsg.includes('cala') || lowerMsg.includes('cale')) {
+      return 'cale';
     }
+    
+    const categories = [
+      { key: 'ristoranti', keywords: ['mangiare', 'ristorante', 'ristoranti', 'pizzeria', 'bar', 'cena', 'pranzo', 'gelateria', 'gelato', 'dolci', 'locale'] },
+      { key: 'hotel', keywords: ['dormire', 'hotel', 'albergo', 'b&b', 'alloggio', 'appartamento', 'casa vacanze', 'residence', 'campeggio'] },
+      { key: 'escursioni', keywords: ['escursione', 'tour', 'gita', 'barca', 'diving', 'sub', 'noleggio', 'gommone', 'sup', 'canoa'] },
+      { key: 'cale', keywords: ['spiaggia', 'mare', 'bagno', 'lido', 'baia'] },
+      { key: 'traghetti', keywords: ['traghetto', 'traghetti', 'orari', 'partenza', 'arrivo', 'prenotazione', 'biglietto', 'jet', 'nave', 'zenit', 'elicottero'] },
+      { key: 'taxi', keywords: ['taxi', 'navetta', 'trasporto', 'porto'] },
+      { key: 'collegamenti', keywords: ['collegamento', 'interno', 'san domino', 'san nicola', 'tra isole'] },
+      { key: 'negozi', keywords: ['negozio', 'negozi', 'shopping', 'alimentari', 'tabacchi', 'made in tremiti'] },
+      { key: 'servizi', keywords: ['servizio', 'servizi', 'meteo', 'notizie', 'spa', 'biblioteca', 'conad', 'supermercato'] }
+    ];
+    
+    // Controlla per match esatti
+    for (const cat of categories) {
+      if (cat.keywords.some(k => lowerMsg.includes(k))) {
+        return cat.key;
+      }
+    }
+    
+    // Se non trova nulla, controlla per domande generiche sui traghetti
+    if (lowerMsg.includes('come') && (lowerMsg.includes('tremiti') || lowerMsg.includes('isole'))) {
+      return 'traghetti';
+    }
+    
     return null;
   }
 
@@ -55,9 +75,28 @@ export class TremitiBot {
 
   getRelevantData(category) {
     if (!category) return null;
+    
+    // Per le cale, restituisci direttamente i dati delle cale
     if (category === 'cale') return this.jsonData.cale;
+    
+    // Per i traghetti, restituisci tutti i dati dei trasporti
+    if (category === 'traghetti') {
+      return {
+        jet: this.jsonData.jet,
+        nave: this.jsonData.nave,
+        gargano: this.jsonData.gargano,
+        zenit: this.jsonData.zenit,
+        elicottero: this.jsonData.elicottero
+      };
+    }
+    
+    // Per taxi e collegamenti, non serve JSON specifico (sono hardcoded nel prompt)
+    if (category === 'taxi' || category === 'collegamenti') {
+      return null;
+    }
+    
+    // Per tutte le altre categorie, filtra dalle pagine
     if (this.jsonData.pagine && Array.isArray(this.jsonData.pagine)) {
-      // Mappa le chiavi logiche alle categorie reali del JSON
       const categoryMap = {
         ristoranti: ['Ristoranti/pizzerie', 'Bar', 'Locali', 'Gelaterie & Dolci'],
         hotel: ['Hotel', 'Albergo', 'B&B', 'Appartamenti & B&B', 'Campeggi', 'Residence'],
@@ -66,9 +105,9 @@ export class TremitiBot {
         servizi: ['Servizi', 'Taxi', 'Notizie', 'Meteo', 'SPA'],
         trasporti: ['Trasporti'],
         lidi: ['Lidi'],
-        sport: ['Sport'],
-        // aggiungi altre categorie se necessario
+        sport: ['Sport']
       };
+      
       const validCategories = categoryMap[category] || [category];
       return this.jsonData.pagine.filter(p =>
         Array.isArray(p.category) &&
@@ -78,14 +117,15 @@ export class TremitiBot {
         )
       );
     }
+    
     console.error('❌ Errore: this.jsonData.pagine non è un array valido:', typeof this.jsonData.pagine);
     return null;
   }
 
-  buildRagPrompt() {
-    const prompt = `Sei un assistente che aiuta le persone a trovare informazioni sui traghetti per le Isole Tremiti e altri servizi utili, come taxi, cale, collegamenti interni.
+  buildRagPrompt(category = null) {
+    const basePrompt = `Sei un assistente che aiuta le persone a trovare informazioni sui traghetti per le Isole Tremiti e altri servizi utili, come taxi, cale, collegamenti interni.
 
-Quando l’utente usa parole come "oggi", "domani", "dopodomani", calcola la data corretta in modo dinamico.
+Quando l'utente usa parole come "oggi", "domani", "dopodomani", calcola la data corretta in modo dinamico.
 
 ---
 
@@ -93,8 +133,8 @@ Quando l’utente usa parole come "oggi", "domani", "dopodomani", calcola la dat
 
 - Sostituisci automaticamente "San Domino", "San Nicola" o "Tremiti" con "Isole Tremiti".
 - Tratta "Isole Tremiti" come destinazione unica per tutte le compagnie.
-- Se l’utente indica solo **una località** (es. "per Tremiti"), assumi che l’altra sia la **terraferma**.
-- Se l’utente indica **Termoli**, **Vieste**, **Rodi**, **Peschici** o **Foggia**, usali come punto di partenza o arrivo a seconda del contesto linguistico.
+- Se l'utente indica solo **una località** (es. "per Tremiti"), assumi che l'altra sia la **terraferma**.
+- Se l'utente indica **Termoli**, **Vieste**, **Rodi**, **Peschici** o **Foggia**, usali come punto di partenza o arrivo a seconda del contesto linguistico.
 - Se non è chiaro da dove parte o dove va, chiedi gentilmente di chiarire la direzione della tratta.
 
 ---
@@ -127,7 +167,7 @@ Devi suggerire all'utente di controllare manualmente la pagina interna all'app d
 
 ### 🚖 3. Taxi
 
-Se l’utente chiede informazioni sui taxi:
+Se l'utente chiede informazioni sui taxi:
 
 > Il servizio taxi è garantito da 2 navette private che si trovano sul porto al vostro arrivo.  
 > I contatti sono i seguenti:
@@ -141,7 +181,7 @@ Se l’utente chiede informazioni sui taxi:
 
 ### 🚤 4. Collegamenti interni tra San Domino e San Nicola
 
-Se l’utente chiede dei collegamenti tra le isole:
+Se l'utente chiede dei collegamenti tra le isole:
 
 > Per raggiungere l'altra isola (San Nicola da San Domino o viceversa), puoi utilizzare i traghetti interni che collegano le due isole principali delle Tremiti.  
 > Ti consiglio di consultare l'app al seguente link per visualizzare gli orari aggiornati, inclusi quelli notturni:  
@@ -151,7 +191,7 @@ Se l’utente chiede dei collegamenti tra le isole:
 
 ### 🏖 5. Cale e spiagge
 
-Se l’utente chiede informazioni su cale, lidi o spiagge:
+Se l'utente chiede informazioni su cale, lidi o spiagge:
 
 1. Usa i dati JSON forniti.
 2. Mostra massimo 10 risultati, dando priorità a:
@@ -171,7 +211,29 @@ Non ho abbastanza informazioni per rispondere con precisione alla tua domanda. T
 
 ### 📦 Dati JSON disponibili
 
-Ecco i dati che puoi usare:
+Ecco i dati che puoi usare:`;
+
+    // Se abbiamo una categoria specifica, includi solo i dati rilevanti
+    if (category) {
+      const relevantData = this.getRelevantData(category);
+      if (relevantData) {
+        return `${basePrompt}
+
+- Dati rilevanti per "${category}":
+  ${JSON.stringify(relevantData)}
+
+> Esiste anche una mappa dell'arcipelago interattiva. Basta andare nel menu principale dell'app e cliccare su "Mappa": la mappa comprende anche i percorsi e sentieri da fare a piedi e i tragitti per raggiungere le cale e le spiagge.
+> Se ti chiedono percorsi per visitare le isole (San Domino e San Nicola), rispondi che esiste la mappa sull'app che comprende anche i percorsi e sentieri da fare a piedi e i tragitti per raggiungere le cale e le spiagge.
+> Se ti chiedono dove si trovano alcune cale, fai riferimento al JSON delle cale e rispondi con la cala che più assomiglia alla richiesta: suggerisci anche il "clicca qui" per andare alla pagina di dettalgio dela cala.
+> Se ti chiedono gli orari della Conad o del supermercato vai alla pagina "conad".
+> Se ti chiedono info sulle spiagge? Cala delle arene o cala matano (aggiungi i link alle cale).
+> Se ti chiedono dov'è la biblioteca, rispondi che sta a San Domino prima della discesa in Via Federico II.
+> Se ti chiedono qualcosa come Appartamenti in affitto oppure Casa vacanze fai riferimento al JSON_PAGINE cercando dove dormire.`;
+      }
+    }
+
+    // Se non abbiamo categoria o dati rilevanti, includi tutti i dati (fallback)
+    return `${basePrompt}
 
 - JET (compagnia NLG):
   ${JSON.stringify(this.jsonData.jet)}
@@ -200,20 +262,21 @@ ${JSON.stringify(this.jsonData.pagine)}
 > Se ti chiedono gli orari della Conad o del supermercato vai alla pagina "conad".
 > Se ti chiedono info sulle spiagge? Cala delle arene o cala matano (aggiungi i link alle cale).
 > Se ti chiedono dov'è la biblioteca, rispondi che sta a San Domino prima della discesa in Via Federico II.
-> Se ti chiedono qualcosa come Appartamenti in affitto oppure Casa vacanze fai riferimento al JSON_PAGINE cercando dove dormire.
-`;
-    return prompt;
+> Se ti chiedono qualcosa come Appartamenti in affitto oppure Casa vacanze fai riferimento al JSON_PAGINE cercando dove dormire.`;
   }
 
   async sendMessage(userMessage, conversationHistory = []) {
     try {
+      // Determina la categoria della query
+      const category = this.getQueryCategory(userMessage);
+      console.log(`🔍 Categoria rilevata: ${category || 'nessuna'}`);
 
       const payload = {
         anthropic_version: "bedrock-2023-05-31",
         max_tokens: this.modelConfig.maxTokens,
         temperature: this.modelConfig.temperature,
         top_p: this.modelConfig.topP,
-        system: this.buildRagPrompt(),
+        system: this.buildRagPrompt(category),
         messages: this.prepareMessages(userMessage, conversationHistory)
       };
       const command = new InvokeModelCommand({
