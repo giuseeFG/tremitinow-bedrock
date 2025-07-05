@@ -1,4 +1,4 @@
-import { TremitiBot } from './services/tremitiBot.js';
+import { TremitiBot } from '../shared/services/tremitiBot.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 

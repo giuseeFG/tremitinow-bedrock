@@ -29,8 +29,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: tremiti-bot-lambda
-      CodeUri: .
-      Handler: index.handler
+      CodeUri: ..
+      Handler: lambda/index.handler
       Description: Lambda function per TremitiBot Bedrock
       Policies:
         - AWSLambdaBasicExecutionRole

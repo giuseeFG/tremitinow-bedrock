@@ -1,4 +1,4 @@
-import { TremitiBot } from './tremitiBot.js';
+import { TremitiBot } from '../../shared/services/tremitiBot.js';
 import { bedrockConfig } from '../config/bedrock.js';
 import path from 'path';
 

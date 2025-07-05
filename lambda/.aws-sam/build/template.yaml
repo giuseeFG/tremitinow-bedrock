@@ -30,7 +30,7 @@ Resources:
     Properties:
       FunctionName: tremiti-bot-lambda
       CodeUri: TremitiBotFunction
-      Handler: index.handler
+      Handler: lambda/index.handler
       Description: Lambda function per TremitiBot Bedrock
       Policies:
       - AWSLambdaBasicExecutionRole

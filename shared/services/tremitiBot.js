@@ -110,7 +110,7 @@ Rispondi solo con il nome della categoria.`;
         body: JSON.stringify(categoryPayload),
         contentType: 'application/json'
       });
-      
+
       const categoryResponse = await this.client.send(categoryCommand);
       const categoryBody = JSON.parse(new TextDecoder().decode(categoryResponse.body));
       const category = categoryBody.content[0].text.trim().toLowerCase();
@@ -119,7 +119,7 @@ Rispondi solo con il nome della categoria.`;
       if (category === 'null' || category === 'none' || category === '') {
         return null;
       }
-      
+
       return category;
     } catch (error) {
       console.error('❌ Errore categorizzazione:', error.message);
@@ -189,7 +189,7 @@ Rispondi solo con il nome della categoria.`;
     const today = new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const basePrompt = `Sei un assistente che aiuta le persone a trovare informazioni sui traghetti per le Isole Tremiti e altri servizi utili, come taxi, cale, collegamenti interni, attività da fare o spiagge.
 
-IMPORTANTE: Quando l'utente usa parole come "oggi", "domani", "dopodomani", "lunedì", "martedì", ecc., calcola la data corretta in modo dinamico basandoti sulla data attuale di OGGI. Inizia sempre la risposta scrivendo la data calcolata in formato "**DD Mese AAAA**" (es. "**7 Luglio 2025**"). Poi vai subito al punto con le informazioni richieste senza spiegare i calcoli. NON dire mai frasi come "Per fornirti informazioni precise", "ho bisogno di calcolare", "Ecco gli orari disponibili per [data]".
+IMPORTANTE: Quando l'utente usa parole come "oggi", "domani", "dopodomani", "lunedì", "martedì", ecc., calcola la data corretta in modo dinamico basandoti sulla data attuale di OGGI. Vai subito al punto con le informazioni richieste senza spiegare i calcoli. NON dire mai frasi come "Per fornirti informazioni precise", "ho bisogno di calcolare", "Ecco gli orari disponibili per [data]".
 IMPORTANTE: La data attuale è ${today}.
 
 ---
@@ -343,7 +343,7 @@ ${JSON.stringify(this.jsonData.pagine)}
           created_at: new Date()
         })
         .timeout(10000); // Timeout di 10 secondi
-      
+
       console.log('✅ Messaggio salvato nel database');
     } catch (error) {
       console.error('❌ Errore salvataggio DB:', error.message);
@@ -352,64 +352,64 @@ ${JSON.stringify(this.jsonData.pagine)}
   }
 
   async sendMessage(userMessage, conversationHistory = []) {
-          try {
-        // Determina la categoria della query
-        const category = await this.getQueryCategory(userMessage);
-        console.log(`🔍 Categoria rilevata: ${category || 'nessuna'}`);
+    try {
+      // Determina la categoria della query
+      const category = await this.getQueryCategory(userMessage);
+      console.log(`🔍 Categoria rilevata: ${category || 'nessuna'}`);
 
-        const payload = {
-          anthropic_version: "bedrock-2023-05-31",
-          max_tokens: this.modelConfig.maxTokens,
-          temperature: this.modelConfig.temperature,
-          top_p: this.modelConfig.topP,
-          system: this.buildRagPrompt(category),
-          messages: this.prepareMessages(userMessage, conversationHistory)
-        };
-        
-        const command = new InvokeModelCommand({
-          modelId: this.modelConfig.modelId,
-          body: JSON.stringify(payload),
-          contentType: 'application/json'
-        });
-        
-        const response = await this.client.send(command);
-        const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+      const payload = {
+        anthropic_version: "bedrock-2023-05-31",
+        max_tokens: this.modelConfig.maxTokens,
+        temperature: this.modelConfig.temperature,
+        top_p: this.modelConfig.topP,
+        system: this.buildRagPrompt(category),
+        messages: this.prepareMessages(userMessage, conversationHistory)
+      };
 
-        // Salva nel DB SINCRONAMENTE (BLOCKING) - attendiamo che finisca prima di restituire la risposta
-        try {
-          await this.saveToDatabase(userMessage, responseBody.content[0].text);
-        } catch (dbError) {
-          console.error('❌ Errore salvataggio DB:', dbError.message);
-          // Non bloccare la risposta anche se il DB fallisce
-        }
+      const command = new InvokeModelCommand({
+        modelId: this.modelConfig.modelId,
+        body: JSON.stringify(payload),
+        contentType: 'application/json'
+      });
 
-        return {
-          success: true,
-          message: responseBody.content[0].text,
-          usage: {
-            inputTokens: responseBody.usage.input_tokens,
-            outputTokens: responseBody.usage.output_tokens
-          }
-        };
-      } catch (error) {
-        return {
-          success: false,
-          error: error.message,
-          fallbackMessage: "Mi dispiace, c'è stato un problema. Contatta [Fuffy](https://tremitinow.it/cGFnZS82Mw==) per assistenza."
-        };
-      }
-    }
+      const response = await this.client.send(command);
+      const responseBody = JSON.parse(new TextDecoder().decode(response.body));
 
-    // Metodo per cleanup delle connessioni (opzionale, da chiamare alla fine del Lambda)
-    async cleanup() {
+      // Salva nel DB SINCRONAMENTE (BLOCKING) - attendiamo che finisca prima di restituire la risposta
       try {
-        if (dbInstance) {
-          await dbInstance.destroy();
-          dbInstance = null;
-          console.log('🔌 Connessioni DB chiuse');
-        }
-      } catch (error) {
-        console.error('❌ Errore chiusura DB:', error.message);
+        await this.saveToDatabase(userMessage, responseBody.content[0].text);
+      } catch (dbError) {
+        console.error('❌ Errore salvataggio DB:', dbError.message);
+        // Non bloccare la risposta anche se il DB fallisce
       }
+
+      return {
+        success: true,
+        message: responseBody.content[0].text,
+        usage: {
+          inputTokens: responseBody.usage.input_tokens,
+          outputTokens: responseBody.usage.output_tokens
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        fallbackMessage: "Mi dispiace, c'è stato un problema. Contatta [Fuffy](https://tremitinow.it/cGFnZS82Mw==) per assistenza."
+      };
     }
   }
+
+  // Metodo per cleanup delle connessioni (opzionale, da chiamare alla fine del Lambda)
+  async cleanup() {
+    try {
+      if (dbInstance) {
+        await dbInstance.destroy();
+        dbInstance = null;
+        console.log('🔌 Connessioni DB chiuse');
+      }
+    } catch (error) {
+      console.error('❌ Errore chiusura DB:', error.message);
+    }
+  }
+}
