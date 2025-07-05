@@ -8,6 +8,12 @@ let dbInstance = null;
 
 function getDatabase() {
   if (!dbInstance) {
+    // Se PG_DATA_URL non è configurata, restituisci null
+    if (!process.env.PG_DATA_URL) {
+      console.log('⚠️ PG_DATA_URL non configurata, salvataggio DB disabilitato');
+      return null;
+    }
+    
     dbInstance = knex({
       client: 'pg',
       connection: {
@@ -336,6 +342,12 @@ ${JSON.stringify(this.jsonData.pagine)}
 
   async saveToDatabase(question, answer) {
     try {
+      // Se il database non è configurato, salta il salvataggio
+      if (!this.db) {
+        console.log('⚠️ Database non configurato, salvataggio saltato');
+        return;
+      }
+      
       await this.db('bot_messages')
         .insert({
           question: question,

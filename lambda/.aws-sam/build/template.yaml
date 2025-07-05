@@ -11,6 +11,10 @@ Parameters:
   BedrockTemperature:
     Type: Number
     Default: 0.3
+  PgDataUrl:
+    Type: String
+    Description: PostgreSQL connection string for the database
+    NoEcho: true
 Globals:
   Function:
     Timeout: 30
@@ -24,6 +28,8 @@ Globals:
           Ref: BedrockMaxTokens
         BEDROCK_TEMPERATURE:
           Ref: BedrockTemperature
+        PG_DATA_URL:
+          Ref: PgDataUrl
 Resources:
   TremitiBotFunction:
     Type: AWS::Serverless::Function
