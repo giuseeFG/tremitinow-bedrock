@@ -37,7 +37,7 @@ lambda/
 La Lambda function utilizza le seguenti variabili d'ambiente:
 
 ```env
-BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
+BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
 BEDROCK_MAX_TOKENS=2000
 BEDROCK_TEMPERATURE=0.3
 AWS_REGION=us-east-1
@@ -56,7 +56,7 @@ La Lambda function richiede i seguenti permessi:
       "Action": [
         "bedrock:InvokeModel"
       ],
-      "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0"
+      "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
     }
   ]
 }

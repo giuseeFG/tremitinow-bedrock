@@ -1,6 +1,34 @@
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import fs from 'fs';
 import path from 'path';
+import knex from 'knex';
+
+// Singleton per la connessione DB
+let dbInstance = null;
+
+function getDatabase() {
+  if (!dbInstance) {
+    dbInstance = knex({
+      client: 'pg',
+      connection: {
+        connectionString: process.env.PG_DATA_URL,
+        ssl: { rejectUnauthorized: false }
+      },
+      pool: {
+        min: 0,
+        max: 1,
+        acquireTimeoutMillis: 30000,
+        createTimeoutMillis: 30000,
+        destroyTimeoutMillis: 5000,
+        idleTimeoutMillis: 30000,
+      },
+      acquireConnectionTimeout: 30000,
+      // Importante: per Lambda, disabilita il ping periodico
+      ping: false
+    });
+  }
+  return dbInstance;
+}
 
 export class TremitiBot {
   constructor({ dataPath, bedrockConfig }) {
@@ -10,6 +38,7 @@ export class TremitiBot {
     });
     this.modelConfig = bedrockConfig.modelConfig;
     this.jsonData = this.loadJsonData(dataPath);
+    this.db = getDatabase();
   }
 
   loadJsonData(dataPath) {
@@ -20,6 +49,7 @@ export class TremitiBot {
         gargano: JSON.parse(fs.readFileSync(path.join(dataPath, 'json_gargano.json'), 'utf-8')),
         zenit: JSON.parse(fs.readFileSync(path.join(dataPath, 'json_zenit.json'), 'utf-8')),
         elicottero: JSON.parse(fs.readFileSync(path.join(dataPath, 'json_elicottero.json'), 'utf-8')),
+        vieste: JSON.parse(fs.readFileSync(path.join(dataPath, 'json_vieste.json'), 'utf-8')),
         cale: JSON.parse(fs.readFileSync(path.join(dataPath, 'json_cale.json'), 'utf-8')),
         pagine: JSON.parse(fs.readFileSync(path.join(dataPath, 'json_pagine.json'), 'utf-8'))
       };
@@ -31,12 +61,12 @@ export class TremitiBot {
 
   getQueryCategory(userMessage) {
     const lowerMsg = userMessage.toLowerCase();
-    
+
     // PRIORITÀ ASSOLUTA: se c'è "cala" o "cale", è sempre categoria cale
     if (lowerMsg.includes('cala') || lowerMsg.includes('cale')) {
       return 'cale';
     }
-    
+
     const categories = [
       { key: 'ristoranti', keywords: ['mangiare', 'ristorante', 'ristoranti', 'pizzeria', 'bar', 'cena', 'pranzo', 'gelateria', 'gelato', 'dolci', 'locale'] },
       { key: 'hotel', keywords: ['dormire', 'hotel', 'albergo', 'b&b', 'alloggio', 'appartamento', 'casa vacanze', 'residence', 'campeggio'] },
@@ -48,19 +78,19 @@ export class TremitiBot {
       { key: 'negozi', keywords: ['negozio', 'negozi', 'shopping', 'alimentari', 'tabacchi', 'made in tremiti'] },
       { key: 'servizi', keywords: ['servizio', 'servizi', 'meteo', 'notizie', 'spa', 'biblioteca', 'conad', 'supermercato'] }
     ];
-    
+
     // Controlla per match esatti
     for (const cat of categories) {
       if (cat.keywords.some(k => lowerMsg.includes(k))) {
         return cat.key;
       }
     }
-    
+
     // Se non trova nulla, controlla per domande generiche sui traghetti
     if (lowerMsg.includes('come') && (lowerMsg.includes('tremiti') || lowerMsg.includes('isole'))) {
       return 'traghetti';
     }
-    
+
     return null;
   }
 
@@ -75,10 +105,10 @@ export class TremitiBot {
 
   getRelevantData(category) {
     if (!category) return null;
-    
+
     // Per le cale, restituisci direttamente i dati delle cale
     if (category === 'cale') return this.jsonData.cale;
-    
+
     // Per i traghetti, restituisci tutti i dati dei trasporti
     if (category === 'traghetti') {
       return {
@@ -89,12 +119,12 @@ export class TremitiBot {
         elicottero: this.jsonData.elicottero
       };
     }
-    
+
     // Per taxi e collegamenti, non serve JSON specifico (sono hardcoded nel prompt)
     if (category === 'taxi' || category === 'collegamenti') {
       return null;
     }
-    
+
     // Per tutte le altre categorie, filtra dalle pagine
     if (this.jsonData.pagine && Array.isArray(this.jsonData.pagine)) {
       const categoryMap = {
@@ -107,7 +137,7 @@ export class TremitiBot {
         lidi: ['Lidi'],
         sport: ['Sport']
       };
-      
+
       const validCategories = categoryMap[category] || [category];
       return this.jsonData.pagine.filter(p =>
         Array.isArray(p.category) &&
@@ -117,7 +147,7 @@ export class TremitiBot {
         )
       );
     }
-    
+
     console.error('❌ Errore: this.jsonData.pagine non è un array valido:', typeof this.jsonData.pagine);
     return null;
   }
@@ -250,6 +280,9 @@ Ecco i dati che puoi usare:`;
 - Elicottero (compagnia Alidaunia):
   ${JSON.stringify(this.jsonData.elicottero)}
 
+- Traghetto da Vieste alle Tremiti (compagnia NLG):
+  ${JSON.stringify(this.jsonData.vieste)}
+
 - Cale e spiagge:
   ${JSON.stringify(this.jsonData.cale)}
   
@@ -263,6 +296,23 @@ ${JSON.stringify(this.jsonData.pagine)}
 > Se ti chiedono info sulle spiagge? Cala delle arene o cala matano (aggiungi i link alle cale).
 > Se ti chiedono dov'è la biblioteca, rispondi che sta a San Domino prima della discesa in Via Federico II.
 > Se ti chiedono qualcosa come Appartamenti in affitto oppure Casa vacanze fai riferimento al JSON_PAGINE cercando dove dormire.`;
+  }
+
+  async saveToDatabase(question, answer) {
+    try {
+      await this.db('bot_messages')
+        .insert({
+          question: question,
+          answer: answer,
+          created_at: new Date()
+        })
+        .timeout(10000); // Timeout di 10 secondi
+      
+      console.log('✅ Messaggio salvato nel database');
+    } catch (error) {
+      console.error('❌ Errore salvataggio DB:', error.message);
+      // Non fare throw dell'errore per non bloccare la risposta
+    }
   }
 
   async sendMessage(userMessage, conversationHistory = []) {
@@ -279,13 +329,24 @@ ${JSON.stringify(this.jsonData.pagine)}
         system: this.buildRagPrompt(category),
         messages: this.prepareMessages(userMessage, conversationHistory)
       };
+      
       const command = new InvokeModelCommand({
         modelId: this.modelConfig.modelId,
         body: JSON.stringify(payload),
         contentType: 'application/json'
       });
+      
       const response = await this.client.send(command);
       const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+
+      // Salva nel DB SINCRONAMENTE (BLOCKING) - attendiamo che finisca prima di restituire la risposta
+      try {
+        await this.saveToDatabase(userMessage, responseBody.content[0].text);
+      } catch (dbError) {
+        console.error('❌ Errore salvataggio DB:', dbError.message);
+        // Non bloccare la risposta anche se il DB fallisce
+      }
+
       return {
         success: true,
         message: responseBody.content[0].text,
@@ -302,4 +363,17 @@ ${JSON.stringify(this.jsonData.pagine)}
       };
     }
   }
-} 
+
+  // Metodo per cleanup delle connessioni (opzionale, da chiamare alla fine del Lambda)
+  async cleanup() {
+    try {
+      if (dbInstance) {
+        await dbInstance.destroy();
+        dbInstance = null;
+        console.log('🔌 Connessioni DB chiuse');
+      }
+    } catch (error) {
+      console.error('❌ Errore chiusura DB:', error.message);
+    }
+  }
+}

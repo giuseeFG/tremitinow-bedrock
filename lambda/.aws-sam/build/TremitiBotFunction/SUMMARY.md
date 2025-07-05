@@ -71,7 +71,7 @@ lambda/
 
 ### **Environment Variables**:
 ```env
-BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
+BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
 BEDROCK_MAX_TOKENS=2000
 BEDROCK_TEMPERATURE=0.3
 AWS_REGION=us-east-1

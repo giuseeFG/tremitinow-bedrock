@@ -158,7 +158,7 @@ Il bot gestisce **58 cala** distribuite su:
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
-BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
+BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
 BEDROCK_MAX_TOKENS=2000
 BEDROCK_TEMPERATURE=0.3
 PORT=3000

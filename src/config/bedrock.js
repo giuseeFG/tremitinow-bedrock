@@ -8,7 +8,7 @@ export const bedrockConfig = {
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
   },
   modelConfig: {
-    modelId: process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+    modelId: process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-haiku-20240307-v1:0',
     maxTokens: parseInt(process.env.BEDROCK_MAX_TOKENS) || 2000,
     temperature: parseFloat(process.env.BEDROCK_TEMPERATURE) || 0.3,
     topP: 0.9

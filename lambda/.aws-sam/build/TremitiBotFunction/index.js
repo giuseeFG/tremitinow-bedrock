@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 const bedrockConfig = {
   region: process.env.AWS_REGION || 'us-east-1',
   modelConfig: {
-    modelId: process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+    modelId: process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-haiku-20240307-v1:0',
     maxTokens: parseInt(process.env.BEDROCK_MAX_TOKENS) || 2000,
     temperature: parseFloat(process.env.BEDROCK_TEMPERATURE) || 0.3,
     topP: 0.9
