@@ -59,39 +59,72 @@ export class TremitiBot {
     }
   }
 
-  getQueryCategory(userMessage) {
-    const lowerMsg = userMessage.toLowerCase();
+  buildCategoryPrompt() {
+    return `Sei un classificatore di domande per un assistente delle Isole Tremiti.
 
-    // PRIORITÀ ASSOLUTA: se c'è "cala" o "cale", è sempre categoria cale
-    if (lowerMsg.includes('cala') || lowerMsg.includes('cale')) {
-      return 'cale';
-    }
+Analizza la domanda dell'utente e restituisci UNA SOLA categoria tra quelle disponibili.
 
-    const categories = [
-      { key: 'ristoranti', keywords: ['mangiare', 'ristorante', 'ristoranti', 'pizzeria', 'bar', 'cena', 'pranzo', 'gelateria', 'gelato', 'dolci', 'locale'] },
-      { key: 'hotel', keywords: ['dormire', 'hotel', 'albergo', 'b&b', 'alloggio', 'appartamento', 'casa vacanze', 'residence', 'campeggio'] },
-      { key: 'escursioni', keywords: ['escursione', 'tour', 'gita', 'barca', 'diving', 'sub', 'noleggio', 'gommone', 'sup', 'canoa'] },
-      { key: 'cale', keywords: ['spiaggia', 'mare', 'bagno', 'lido', 'baia'] },
-      { key: 'traghetti', keywords: ['traghetto', 'traghetti', 'orari', 'partenza', 'arrivo', 'prenotazione', 'biglietto', 'jet', 'nave', 'zenit', 'elicottero'] },
-      { key: 'taxi', keywords: ['taxi', 'navetta', 'trasporto', 'porto'] },
-      { key: 'collegamenti', keywords: ['collegamento', 'interno', 'san domino', 'san nicola', 'tra isole'] },
-      { key: 'negozi', keywords: ['negozio', 'negozi', 'shopping', 'alimentari', 'tabacchi', 'made in tremiti'] },
-      { key: 'servizi', keywords: ['servizio', 'servizi', 'meteo', 'notizie', 'spa', 'biblioteca', 'conad', 'supermercato'] }
-    ];
+Categorie disponibili:
+- ristoranti: domande su mangiare, ristoranti, pizzerie, bar, cena, pranzo, gelaterie, gelato, dolci, locali
+- hotel: domande su dormire, hotel, albergo, b&b, alloggio, appartamento, casa vacanze, residence, campeggio
+- escursioni: domande su escursioni, tour, gite, barca, diving, sub, noleggio, gommone, sup, canoa
+- cale: domande su spiagge, mare, bagno, lido, baia (PRIORITÀ ASSOLUTA se contiene "cala" o "cale")
+- traghetti: domande su traghetti, orari, partenza, arrivo, prenotazione, biglietto, jet, nave, zenit, elicottero
+- taxi: domande su taxi, navetta, trasporto, porto
+- collegamenti: domande su collegamenti interni, san domino, san nicola, tra isole
+- negozi: domande su negozi, shopping, alimentari, tabacchi, made in tremiti
+- servizi: domande su servizi, meteo, notizie, spa, biblioteca, conad, supermercato
 
-    // Controlla per match esatti
-    for (const cat of categories) {
-      if (cat.keywords.some(k => lowerMsg.includes(k))) {
-        return cat.key;
+Regole:
+1. Se la domanda contiene "cala" o "cale", restituisci SEMPRE "cale"
+2. Se la domanda contiene "come" e ("tremiti" o "isole"), restituisci "traghetti"
+3. Restituisci solo il nome della categoria, senza virgolette o altri caratteri
+4. Se non trovi corrispondenze, restituisci "null"
+
+Esempi:
+- "Dove posso mangiare?" → ristoranti
+- "Hotel a San Domino" → hotel
+- "Orari traghetti per domani" → traghetti
+- "Cala delle Arene" → cale
+- "Taxi dal porto" → taxi
+- "Come arrivare alle Tremiti" → traghetti
+
+Rispondi solo con il nome della categoria.`;
+  }
+
+  async getQueryCategory(userMessage) {
+    try {
+      const categoryPayload = {
+        anthropic_version: "bedrock-2023-05-31",
+        max_tokens: 50,
+        temperature: 0.1,
+        top_p: 0.9,
+        system: this.buildCategoryPrompt(),
+        messages: [
+          { role: 'user', content: userMessage }
+        ]
+      };
+
+      const categoryCommand = new InvokeModelCommand({
+        modelId: 'anthropic.claude-3-haiku-20240307-v1:0',
+        body: JSON.stringify(categoryPayload),
+        contentType: 'application/json'
+      });
+      
+      const categoryResponse = await this.client.send(categoryCommand);
+      const categoryBody = JSON.parse(new TextDecoder().decode(categoryResponse.body));
+      const category = categoryBody.content[0].text.trim().toLowerCase();
+
+      // Normalizza la risposta
+      if (category === 'null' || category === 'none' || category === '') {
+        return null;
       }
+      
+      return category;
+    } catch (error) {
+      console.error('❌ Errore categorizzazione:', error.message);
+      return null;
     }
-
-    // Se non trova nulla, controlla per domande generiche sui traghetti
-    if (lowerMsg.includes('come') && (lowerMsg.includes('tremiti') || lowerMsg.includes('isole'))) {
-      return 'traghetti';
-    }
-
-    return null;
   }
 
   prepareMessages(userMessage, history) {
@@ -153,9 +186,11 @@ export class TremitiBot {
   }
 
   buildRagPrompt(category = null) {
-    const basePrompt = `Sei un assistente che aiuta le persone a trovare informazioni sui traghetti per le Isole Tremiti e altri servizi utili, come taxi, cale, collegamenti interni.
+    const today = new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const basePrompt = `Sei un assistente che aiuta le persone a trovare informazioni sui traghetti per le Isole Tremiti e altri servizi utili, come taxi, cale, collegamenti interni, attività da fare o spiagge.
 
-Quando l'utente usa parole come "oggi", "domani", "dopodomani", calcola la data corretta in modo dinamico.
+IMPORTANTE: Quando l'utente usa parole come "oggi", "domani", "dopodomani", "lunedì", "martedì", ecc., calcola la data corretta in modo dinamico basandoti sulla data attuale di OGGI. Inizia sempre la risposta scrivendo la data calcolata in formato "**DD Mese AAAA**" (es. "**7 Luglio 2025**"). Poi vai subito al punto con le informazioni richieste senza spiegare i calcoli. NON dire mai frasi come "Per fornirti informazioni precise", "ho bisogno di calcolare", "Ecco gli orari disponibili per [data]".
+IMPORTANTE: La data attuale è ${today}.
 
 ---
 
@@ -173,18 +208,19 @@ Quando l'utente usa parole come "oggi", "domani", "dopodomani", calcola la data 
 
 Se l'utente chiede orari per una certa data, DEVI:
 
-1. Cercare **tutte** le tratte disponibili per quella data e direzione:
+1. **Calcola la data corretta** se l'utente dice "domani", "dopodomani", "lunedì", ecc.
+2. Cercare **tutte** le tratte disponibili per quella data e direzione:
    - JET NLG
    - NAVE NLG
    - Navitremiti (Gargano)
    - Zenit (GS Travel)
    - Elicottero (Foggia)
-2. Mostrare tutte le opzioni disponibili in una **singola risposta** in formato Markdown con elenco puntato.
-3. Se una tratta è **fuori stagione** o non disponibile, dillo chiaramente.
-4. Se **nessuna corsa** è disponibile, scrivi:
+3. Mostrare tutte le opzioni disponibili in una **singola risposta** in formato Markdown con elenco puntato.
+4. Se una tratta è **fuori stagione** o non disponibile, dillo chiaramente.
+5. Se **nessuna corsa** è disponibile, scrivi:
    > "In data [DATA], non ci sono corse disponibili da [ORIGINE] a [DESTINAZIONE]."
-5. Non limitarti alla prima compagnia trovata: esamina tutti i JSON disponibili.
-6. Se l'utente ti chiede info sul collegamento tra Termoli e Tremiti o viceversa con partenza entro il 2 giugno 2025, sappi che ci sono corse aggiuntive extra non cataogate nel DB.
+6. Non limitarti alla prima compagnia trovata: esamina tutti i JSON disponibili.
+7. Se l'utente ti chiede info sul collegamento tra Termoli e Tremiti o viceversa con partenza entro il 2 giugno 2025, sappi che ci sono corse aggiuntive extra non cataogate nel DB.
 Devi suggerire all'utente di controllare manualmente la pagina interna all'app di NLG cliccando qui: "https://tremitinow.it/cGFnZS8xMA==" 
 
 📎 Link prenotazione (da usare in base alla compagnia):
@@ -316,64 +352,64 @@ ${JSON.stringify(this.jsonData.pagine)}
   }
 
   async sendMessage(userMessage, conversationHistory = []) {
-    try {
-      // Determina la categoria della query
-      const category = this.getQueryCategory(userMessage);
-      console.log(`🔍 Categoria rilevata: ${category || 'nessuna'}`);
+          try {
+        // Determina la categoria della query
+        const category = await this.getQueryCategory(userMessage);
+        console.log(`🔍 Categoria rilevata: ${category || 'nessuna'}`);
 
-      const payload = {
-        anthropic_version: "bedrock-2023-05-31",
-        max_tokens: this.modelConfig.maxTokens,
-        temperature: this.modelConfig.temperature,
-        top_p: this.modelConfig.topP,
-        system: this.buildRagPrompt(category),
-        messages: this.prepareMessages(userMessage, conversationHistory)
-      };
-      
-      const command = new InvokeModelCommand({
-        modelId: this.modelConfig.modelId,
-        body: JSON.stringify(payload),
-        contentType: 'application/json'
-      });
-      
-      const response = await this.client.send(command);
-      const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+        const payload = {
+          anthropic_version: "bedrock-2023-05-31",
+          max_tokens: this.modelConfig.maxTokens,
+          temperature: this.modelConfig.temperature,
+          top_p: this.modelConfig.topP,
+          system: this.buildRagPrompt(category),
+          messages: this.prepareMessages(userMessage, conversationHistory)
+        };
+        
+        const command = new InvokeModelCommand({
+          modelId: this.modelConfig.modelId,
+          body: JSON.stringify(payload),
+          contentType: 'application/json'
+        });
+        
+        const response = await this.client.send(command);
+        const responseBody = JSON.parse(new TextDecoder().decode(response.body));
 
-      // Salva nel DB SINCRONAMENTE (BLOCKING) - attendiamo che finisca prima di restituire la risposta
-      try {
-        await this.saveToDatabase(userMessage, responseBody.content[0].text);
-      } catch (dbError) {
-        console.error('❌ Errore salvataggio DB:', dbError.message);
-        // Non bloccare la risposta anche se il DB fallisce
-      }
-
-      return {
-        success: true,
-        message: responseBody.content[0].text,
-        usage: {
-          inputTokens: responseBody.usage.input_tokens,
-          outputTokens: responseBody.usage.output_tokens
+        // Salva nel DB SINCRONAMENTE (BLOCKING) - attendiamo che finisca prima di restituire la risposta
+        try {
+          await this.saveToDatabase(userMessage, responseBody.content[0].text);
+        } catch (dbError) {
+          console.error('❌ Errore salvataggio DB:', dbError.message);
+          // Non bloccare la risposta anche se il DB fallisce
         }
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-        fallbackMessage: "Mi dispiace, c'è stato un problema. Contatta [Fuffy](https://tremitinow.it/cGFnZS82Mw==) per assistenza."
-      };
-    }
-  }
 
-  // Metodo per cleanup delle connessioni (opzionale, da chiamare alla fine del Lambda)
-  async cleanup() {
-    try {
-      if (dbInstance) {
-        await dbInstance.destroy();
-        dbInstance = null;
-        console.log('🔌 Connessioni DB chiuse');
+        return {
+          success: true,
+          message: responseBody.content[0].text,
+          usage: {
+            inputTokens: responseBody.usage.input_tokens,
+            outputTokens: responseBody.usage.output_tokens
+          }
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.message,
+          fallbackMessage: "Mi dispiace, c'è stato un problema. Contatta [Fuffy](https://tremitinow.it/cGFnZS82Mw==) per assistenza."
+        };
       }
-    } catch (error) {
-      console.error('❌ Errore chiusura DB:', error.message);
+    }
+
+    // Metodo per cleanup delle connessioni (opzionale, da chiamare alla fine del Lambda)
+    async cleanup() {
+      try {
+        if (dbInstance) {
+          await dbInstance.destroy();
+          dbInstance = null;
+          console.log('🔌 Connessioni DB chiuse');
+        }
+      } catch (error) {
+        console.error('❌ Errore chiusura DB:', error.message);
+      }
     }
   }
-}
